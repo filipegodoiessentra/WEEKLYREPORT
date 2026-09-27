@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Semanal ISRs</title>
+    <!-- Tailwind CSS para Estilização -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS para ler o Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Phosphor Icons para ícones -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Configuração do Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        
+        /* Oculta scrollbar mas permite scroll */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-10">
+        <div class="p-6 border-b border-slate-200">
+            <h1 class="text-xl font-bold text-brand-600 flex items-center gap-2">
+                <i class="ph-fill ph-chart-line-up text-2xl"></i>
+                Relatórios ISR
+            </h1>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="switchTab('dashboard')" id="btn-tab-dashboard" class="w-full flex items-center gap-3 px-4 py-3 bg-brand-50 text-brand-600 rounded-lg font-medium transition-colors">
+                <i class="ph ph-squares-four text-xl"></i>
+                Dashboard
+            </button>
+            <button onclick="switchTab('settings')" id="btn-tab-settings" class="w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg font-medium transition-colors">
+                <i class="ph ph-gear text-xl"></i>
+                Configurações
+            </button>
+        </nav>
+        <div class="p-4 border-t border-slate-200 text-xs text-slate-400 text-center">
+            Dashboard V1.0 <br> Automatização de Relatórios
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 h-full overflow-y-auto relative">
+        
+        <!-- DASHBOARD TAB -->
+        <div id="tab-dashboard" class="p-8 max-w-7xl mx-auto space-y-6">
+            
+            <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800">Visão Geral da Semana</h2>
+                    <p class="text-slate-500">Faça o upload do Excel e visualize as métricas.</p>
+                </div>
+                
+                <!-- Filtro de Datas -->
+                <div class="flex items-center gap-3 bg-white p-2 rounded-lg shadow-sm border border-slate-200">
+                    <div class="flex flex-col">
+                        <label class="text-xs text-slate-500 font-semibold uppercase px-2">Data Inicial</label>
+                        <input type="date" id="date-start" class="text-sm bg-transparent border-none focus:ring-0 px-2 py-1 outline-none">
+                    </div>
+                    <span class="text-slate-300">-</span>
+                    <div class="flex flex-col">
+                        <label class="text-xs text-slate-500 font-semibold uppercase px-2">Data Final</label>
+                        <input type="date" id="date-end" class="text-sm bg-transparent border-none focus:ring-0 px-2 py-1 outline-none">
+                    </div>
+                    <button onclick="processData()" class="bg-brand-600 hover:bg-brand-700 text-white p-2 rounded-md transition-colors" title="Atualizar Filtro">
+                        <i class="ph ph-arrows-clockwise text-lg"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Filtro de Carteiras (Oculto até o upload) -->
+            <div id="carteiras-container" class="hidden mb-6 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <i class="ph ph-funnel text-brand-600 text-lg"></i>
+                    Filtro de Carteiras (Selecione para incluir no cálculo)
+                </h3>
+                <div id="carteiras-list" class="flex flex-wrap gap-2">
+                    <!-- Checkboxes injetados via JS -->
+                </div>
+            </div>
+
+            <!-- Zona de Upload -->
+            <div id="upload-zone" class="bg-white border-2 border-dashed border-brand-300 rounded-xl p-8 text-center transition-all hover:bg-brand-50 cursor-pointer shadow-sm relative">
+                <input type="file" id="file-upload" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileUpload(event)">
+                <div class="pointer-events-none">
+                    <i class="ph ph-microsoft-excel-logo text-4xl text-green-600 mb-3 mx-auto"></i>
+                    <p class="text-lg font-medium text-slate-700">Arraste a planilha de relatório aqui ou clique para selecionar</p>
+                    <p class="text-sm text-slate-500 mt-1">Formatos suportados: .xlsx, .xls</p>
+                </div>
+            </div>
+
+            <!-- Cards de Métricas (Ocultos até o upload) -->
+            <div id="metrics-container" class="hidden space-y-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Cotações -->
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Cotações</p>
+                                <h3 id="val-cotacoes" class="text-3xl font-bold text-slate-800 mt-1">0</h3>
+                            </div>
+                            <div class="bg-blue-100 p-2 rounded-lg text-blue-600">
+                                <i class="ph ph-receipt text-xl"></i>
+                            </div>
+                        </div>
+                        <div id="breakdown-cotacoes" class="space-y-1 text-sm text-slate-600 pt-3 border-t border-slate-100">
+                            <!-- Injetado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Novos Clientes -->
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Novos Clientes</p>
+                                <h3 id="val-novos" class="text-3xl font-bold text-slate-800 mt-1">0</h3>
+                            </div>
+                            <div class="bg-emerald-100 p-2 rounded-lg text-emerald-600">
+                                <i class="ph ph-user-plus text-xl"></i>
+                            </div>
+                        </div>
+                        <div id="breakdown-novos" class="space-y-1 text-sm text-slate-600 pt-3 border-t border-slate-100">
+                            <!-- Injetado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Clientes Existentes -->
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Cli. Existentes</p>
+                                <h3 id="val-existentes" class="text-3xl font-bold text-slate-800 mt-1">0</h3>
+                            </div>
+                            <div class="bg-amber-100 p-2 rounded-lg text-amber-600">
+                                <i class="ph ph-users text-xl"></i>
+                            </div>
+                        </div>
+                        <div id="breakdown-existentes" class="space-y-1 text-sm text-slate-600 pt-3 border-t border-slate-100">
+                            <!-- Injetado via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Churn -->
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Churn (Lost)</p>
+                                <h3 id="val-churn" class="text-3xl font-bold text-slate-800 mt-1">0</h3>
+                            </div>
+                            <div class="bg-red-100 p-2 rounded-lg text-red-600">
+                                <i class="ph ph-user-minus text-xl"></i>
+                            </div>
+                        </div>
+                        <div id="breakdown-churn" class="space-y-1 text-sm text-slate-600 pt-3 border-t border-slate-100">
+                            <!-- Injetado via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Área do Relatório em Texto -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                    <div class="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                        <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                            <i class="ph ph-envelope-simple-open text-brand-600"></i>
+                            Texto para o E-mail
+                        </h3>
+                        <button onclick="copyEmail()" class="text-sm bg-white border border-slate-300 hover:bg-slate-100 px-3 py-1.5 rounded flex items-center gap-2 transition-colors shadow-sm">
+                            <i class="ph ph-copy"></i>
+                            Copiar para a Área de Transferência
+                        </button>
+                    </div>
+                    <div class="p-4 bg-slate-800">
+                        <textarea id="email-output" readonly class="w-full h-64 bg-transparent text-slate-100 outline-none resize-none font-mono text-sm leading-relaxed" placeholder="O texto do e-mail aparecerá aqui..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- SETTINGS TAB (Oculta por padrão) -->
+        <div id="tab-settings" class="hidden p-8 max-w-4xl mx-auto space-y-6">
+            <header class="mb-8">
+                <h2 class="text-2xl font-bold text-slate-800">Configurações de Vendedores</h2>
+                <p class="text-slate-500">Mapeie os códigos CSAL (ex: 338) para os nomes dos vendedores. O sistema lerá o nome na planilha e associará a este código.</p>
+            </header>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200">
+                            <th class="p-4 font-semibold text-sm text-slate-600 w-1/3">Código CSAL</th>
+                            <th class="p-4 font-semibold text-sm text-slate-600 w-2/3">Nome do Vendedor (Exato como na planilha)</th>
+                            <th class="p-4 font-semibold text-sm text-slate-600 text-right">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-table-body" class="divide-y divide-slate-100">
+                        <!-- Linhas geradas via JS -->
+                    </tbody>
+                </table>
+                <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+                    <button onclick="addRepRow()" class="text-sm font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                        <i class="ph ph-plus-circle text-lg"></i>
+                        Adicionar Novo Vendedor
+                    </button>
+                    <button onclick="saveSettings()" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 rounded-lg font-medium transition-colors shadow-sm">
+                        Salvar Alterações
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 text-sm text-blue-800 flex gap-3 mt-4">
+                <i class="ph-fill ph-info text-xl shrink-0 mt-0.5"></i>
+                <div>
+                    <strong>Regras de Leitura Atuais:</strong>
+                    <ul class="list-disc pl-5 mt-2 space-y-1">
+                        <li><strong>Cotações:</strong> Soma de `Quote Key` únicos por vendedor no período.</li>
+                        <li><strong>Novos Clientes:</strong> Cotações onde a coluna `qteType` = 1.</li>
+                        <li><strong>Clientes Existentes:</strong> Cotações onde a coluna `qteType` diferente de 1.</li>
+                        <li><strong>Churn:</strong> Cotações onde a coluna `qteStage` contém a palavra "Lost".</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- ESTADO DA APLICAÇÃO ---
+        let appData = {
+            rawData: [], // Dados puros do Excel
+            parsedData: [], // Dados formatados e padronizados
+            carteiras: [], // Lista de carteiras únicas encontradas
+            selectedCarteiras: [], // Carteiras ativas no filtro
+            repsConfig: [
+                { id: '338', name: 'Matheus Silva' },
+                { id: '340', name: 'Pablo Silva' },
+                { id: '346', name: 'Cristiana Roseto' },
+                { id: '343', name: 'TBD' },
+                { id: '344', name: 'TBD' }
+            ]
+        };
+
+        // --- INICIALIZAÇÃO ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Seta datas iniciais (Segunda a Sexta da semana atual por padrão para demo, mas vamos colocar datas fixas para visualização)
+            document.getElementById('date-start').value = '2026-09-14';
+            document.getElementById('date-end').value = '2026-09-18';
+            
+            renderSettingsTable();
+        });
+
+        // --- NAVEGAÇÃO DE ABAS ---
+        function switchTab(tabId) {
+            document.getElementById('tab-dashboard').classList.add('hidden');
+            document.getElementById('tab-settings').classList.add('hidden');
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+
+            document.getElementById('btn-tab-dashboard').className = 'w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg font-medium transition-colors';
+            document.getElementById('btn-tab-settings').className = 'w-full flex items-center gap-3 px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-lg font-medium transition-colors';
+
+            document.getElementById(`btn-tab-${tabId}`).className = 'w-full flex items-center gap-3 px-4 py-3 bg-brand-50 text-brand-600 rounded-lg font-medium transition-colors';
+        }
+
+        // --- LÓGICA DE CONFIGURAÇÕES (DE/PARA) ---
+        function renderSettingsTable() {
+            const tbody = document.getElementById('settings-table-body');
+            tbody.innerHTML = '';
+            
+            appData.repsConfig.forEach((rep, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-4">
+                        <input type="text" value="${rep.id}" class="rep-id w-full border border-slate-300 rounded px-3 py-1.5 text-sm outline-none focus:border-brand-500" placeholder="Código">
+                    </td>
+                    <td class="p-4">
+                        <input type="text" value="${rep.name}" class="rep-name w-full border border-slate-300 rounded px-3 py-1.5 text-sm outline-none focus:border-brand-500" placeholder="Nome Exato">
+                    </td>
+                    <td class="p-4 text-right">
+                        <button onclick="removeRepRow(${index})" class="text-red-500 hover:text-red-700 p-2" title="Remover">
+                            <i class="ph ph-trash text-lg"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addRepRow() {
+            appData.repsConfig.push({ id: '', name: '' });
+            renderSettingsTable();
+        }
+
+        function removeRepRow(index) {
+            appData.repsConfig.splice(index, 1);
+            renderSettingsTable();
+        }
+
+        function saveSettings() {
+            const rows = document.querySelectorAll('#settings-table-body tr');
+            const newConfig = [];
+            
+            rows.forEach(row => {
+                const id = row.querySelector('.rep-id').value.trim();
+                const name = row.querySelector('.rep-name').value.trim();
+                if(id || name) {
+                    newConfig.push({ id, name });
+                }
+            });
+            
+            appData.repsConfig = newConfig;
+            
+            // Mostrar feedback visual
+            const btn = event.currentTarget;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="ph ph-check"></i> Salvo!';
+            btn.classList.add('bg-green-600', 'hover:bg-green-700');
+            btn.classList.remove('bg-brand-600', 'hover:bg-brand-700');
+            
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                btn.classList.add('bg-brand-600', 'hover:bg-brand-700');
+            }, 2000);
+
+            // Reprocessar os dados com as novas configurações se já houver upload
+            if(appData.parsedData.length > 0) {
+                processData();
+            }
+        }
+
+        // --- STREAMING_CHUNK:Lógica de Upload e Leitura do Excel ---
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            
+            // Mostrar estado de carregamento
+            const uploadZone = document.getElementById('upload-zone');
+            uploadZone.innerHTML = `<div class="py-4"><i class="ph ph-spinner animate-spin text-4xl text-brand-500 mb-2"></i><p class="text-slate-600">Processando planilha...</p></div>`;
+
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                
+                // Pega a primeira aba do excel
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // Converte para JSON
+                const json = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
+                
+                appData.rawData = json;
+                
+                // Restaura zona de upload visualmente indicando sucesso
+                uploadZone.innerHTML = `
+                    <div class="pointer-events-none">
+                        <i class="ph-fill ph-check-circle text-4xl text-green-500 mb-3 mx-auto"></i>
+                        <p class="text-lg font-medium text-slate-700">Arquivo Carregado: ${file.name}</p>
+                        <p class="text-sm text-slate-500 mt-1">Clique ou arraste outro para substituir</p>
+                    </div>
+                    <input type="file" id="file-upload" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="handleFileUpload(event)">
+                `;
+                
+                // Prepara e processa os dados
+                prepareData();
+                renderCarteirasFilter();
+                processData();
+                
+                // Mostra os cards e filtros
+                document.getElementById('metrics-container').classList.remove('hidden');
+                document.getElementById('carteiras-container').classList.remove('hidden');
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Formata e padroniza as colunas cruas para um modelo mais fácil de trabalhar
+        function prepareData() {
+            const carteirasSet = new Set();
+
+            appData.parsedData = appData.rawData.map(row => {
+                // Tenta achar colunas mesmo com pequenas variações de nome/espaços
+                const findCol = (name) => {
+                    const key = Object.keys(row).find(k => k.trim().toLowerCase() === name.toLowerCase());
+                    return key ? row[key] : null;
+                };
+
+                // Lida com diferentes formatos que a Data pode vir, removendo a distorção de fuso horário
+                let rawDate = findCol('CBDate') || findCol('Data');
+                let dateObj = null;
+                
+                if (rawDate instanceof Date) {
+                    // Pega exatamente o dia/mês/ano ignorando fuso
+                    dateObj = new Date(rawDate.getUTCFullYear(), rawDate.getUTCMonth(), rawDate.getUTCDate());
+                } else if (typeof rawDate === 'number') {
+                    dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+                    dateObj = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
+                } else if (typeof rawDate === 'string') {
+                    let d = new Date(rawDate);
+                    if(!isNaN(d.getTime())) {
+                       dateObj = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                    }
+                }
+
+                // Captura a Carteira e a Categoria (com garantias de nome da coluna)
+                let carteira = String(findCol('CARTEIRA') || findCol('Carteira') || 'Sem Carteira').trim();
+                let category = findCol('CUSTOMER CATEGORY') || findCol('Categoria') || findCol('Category');
+                
+                carteirasSet.add(carteira);
+
+                // Garante um ID único sem usar Math.random (que quebrava o agrupamento das linhas)
+                let quoteKey = findCol('Quote Key') || findCol('qteNum') || findCol('Número') || findCol('Quote');
+                if (!quoteKey) {
+                    // Fallback se as colunas falharem: Agrupa por cliente, rep e data
+                    quoteKey = "Q_" + String(findCol('CCUST')) + "_" + String(rawDate) + "_" + String(findCol('CBperson'));
+                }
+
+                return {
+                    quoteKey: quoteKey,
+                    repName: findCol('CBperson') || findCol('qteOrig'),
+                    dateObj: dateObj,
+                    type: findCol('qteType'),
+                    category: category,
+                    carteira: carteira,
+                    stage: findCol('qteStage') || findCol('Status'),
+                    customer: findCol('CCUST')
+                };
+            }).filter(row => row.dateObj); // Filtra linhas vazias ou sem data válida
+
+            // Atualiza a lista de carteiras ordenadas alfabeticamente e seleciona todas por padrão
+            appData.carteiras = Array.from(carteirasSet).sort();
+            appData.selectedCarteiras = [...appData.carteiras];
+        }
+
+        function renderCarteirasFilter() {
+            const container = document.getElementById('carteiras-list');
+            container.innerHTML = '';
+            
+            appData.carteiras.forEach(cart => {
+                const isSelected = appData.selectedCarteiras.includes(cart);
+                
+                // Agora é uma div clicável de forma direta (resolve o bug de não conseguir clicar)
+                const div = document.createElement('div');
+                const safeCart = cart.replace(/'/g, "\\'"); // Evita quebra de aspas
+                
+                div.setAttribute('onclick', `toggleCarteira('${safeCart}')`);
+                div.className = `flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors border select-none ${isSelected ? 'bg-brand-50 border-brand-300 text-brand-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 opacity-60 hover:opacity-100'}`;
+                
+                div.innerHTML = `
+                    <i class="ph-fill ${isSelected ? 'ph-check-circle text-brand-600' : 'ph-circle text-slate-400'} text-lg pointer-events-none"></i>
+                    <span class="pointer-events-none">${cart}</span>
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+
+        function toggleCarteira(carteiraName) {
+            if(appData.selectedCarteiras.includes(carteiraName)) {
+                appData.selectedCarteiras = appData.selectedCarteiras.filter(c => c !== carteiraName);
+            } else {
+                appData.selectedCarteiras.push(carteiraName);
+            }
+            renderCarteirasFilter();
+            processData(); // Recalcula os dados instantaneamente
+        }
+
+        function processData() {
+            if(appData.parsedData.length === 0) return;
+
+            // Formatação blindada para evitar erros de GMT (Fuso Horário) no filtro
+            const startStr = document.getElementById('date-start').value;
+            const endStr = document.getElementById('date-end').value;
+            
+            if(!startStr || !endStr) {
+                alert("Verifique se as datas inicial e final estão preenchidas.");
+                return;
+            }
+
+            const [sYear, sMonth, sDay] = startStr.split('-');
+            const [eYear, eMonth, eDay] = endStr.split('-');
+            
+            const startDate = new Date(sYear, sMonth - 1, sDay, 0, 0, 0);
+            const endDate = new Date(eYear, eMonth - 1, eDay, 23, 59, 59);
+            
+            // Zera contadores
+            let metrics = {
+                cotacoes: { total: 0, byRep: {} },
+                novos: { total: 0, byRep: {} },
+                existentes: { total: 0, byRep: {} },
+                churn: { total: 0, byRep: {} }
+            };
+
+            appData.repsConfig.forEach(rep => {
+                metrics.cotacoes.byRep[rep.name] = 0;
+                metrics.novos.byRep[rep.name] = 0;
+                metrics.existentes.byRep[rep.name] = 0;
+                metrics.churn.byRep[rep.name] = 0;
+            });
+
+            const seenQuotes = new Set();
+            const seenLostQuotes = new Set(); 
+
+            appData.parsedData.forEach(row => {
+                // 1. Filtro de Data exato (usando o objeto Date absoluto)
+                if(!row.dateObj || row.dateObj < startDate || row.dateObj > endDate) return;
+
+                // 2. Filtro de Carteira
+                if(!appData.selectedCarteiras.includes(row.carteira)) return;
+
+                // 3. Identifica Vendedor
+                let mappedRepName = "Outros";
+                const repMatch = appData.repsConfig.find(r => r.name.toLowerCase() === (row.repName || '').toLowerCase());
+                
+                if (repMatch) {
+                    mappedRepName = repMatch.name;
+                } else if (appData.repsConfig.find(r => String(r.id) === String(row.repName))) {
+                     mappedRepName = appData.repsConfig.find(r => String(r.id) === String(row.repName)).name;
+                }
+
+                if(!metrics.cotacoes.byRep[mappedRepName]) {
+                    metrics.cotacoes.byRep[mappedRepName] = 0;
+                    metrics.novos.byRep[mappedRepName] = 0;
+                    metrics.existentes.byRep[mappedRepName] = 0;
+                    metrics.churn.byRep[mappedRepName] = 0;
+                }
+
+                const uniqueQuoteId = `${row.quoteKey}_${mappedRepName}`;
+
+                if(!seenQuotes.has(uniqueQuoteId)) {
+                    seenQuotes.add(uniqueQuoteId);
+
+                    metrics.cotacoes.total++;
+                    metrics.cotacoes.byRep[mappedRepName]++;
+
+                    // Leitura inteligente de Categorias (Nova regra com fallback)
+                    let isNew = false;
+                    const catLower = String(row.category || '').toLowerCase();
+                    const typeStr = String(row.type).trim().toLowerCase();
+                    
+                    if (catLower.includes('novo') || catLower.includes('new')) {
+                        isNew = true;
+                    } else if (typeStr === "1" || typeStr === "new") {
+                        isNew = true;
+                    }
+
+                    if(isNew) {
+                        metrics.novos.total++;
+                        metrics.novos.byRep[mappedRepName]++;
+                    } else {
+                        metrics.existentes.total++;
+                        metrics.existentes.byRep[mappedRepName]++;
+                    }
+                }
+
+                // Churn com variações de nomenclatura de perda
+                const stageStr = String(row.stage).toLowerCase();
+                if(stageStr.includes("lost") || stageStr.includes("perdido") || stageStr.includes("cancelled")) {
+                     if(!seenLostQuotes.has(uniqueQuoteId)) {
+                         seenLostQuotes.add(uniqueQuoteId);
+                         metrics.churn.total++;
+                         metrics.churn.byRep[mappedRepName]++;
+                     }
+                }
+            });
+
+            renderDashboardMetrics(metrics);
+            generateEmailText(metrics);
+        }
+
+        function renderDashboardMetrics(metrics) {
+            document.getElementById('val-cotacoes').textContent = metrics.cotacoes.total;
+            document.getElementById('val-novos').textContent = metrics.novos.total;
+            document.getElementById('val-existentes').textContent = metrics.existentes.total;
+            document.getElementById('val-churn').textContent = metrics.churn.total;
+
+            const generateBreakdownHtml = (byRepData) => {
+                let html = '';
+                appData.repsConfig.forEach(rep => {
+                    const repName = rep.name;
+                    if (byRepData[repName] > 0) {
+                        html += `
+                            <div class="flex justify-between items-center py-1">
+                                <span class="truncate pr-2">${repName}</span>
+                                <span class="font-semibold text-slate-800">${String(byRepData[repName]).padStart(2, '0')}</span>
+                            </div>
+                        `;
+                    } else if (repName === 'Outros' && byRepData[repName] > 0) {
+                        html += `
+                            <div class="flex justify-between items-center py-1 text-slate-400">
+                                <span class="truncate pr-2">${repName}</span>
+                                <span class="font-semibold">${String(byRepData[repName]).padStart(2, '0')}</span>
+                            </div>
+                        `;
+                    }
+                });
+                return html || '<div class="py-1 text-slate-400 text-center">Nenhum dado</div>';
+            };
+
+            document.getElementById('breakdown-cotacoes').innerHTML = generateBreakdownHtml(metrics.cotacoes.byRep);
+            document.getElementById('breakdown-novos').innerHTML = generateBreakdownHtml(metrics.novos.byRep);
+            document.getElementById('breakdown-existentes').innerHTML = generateBreakdownHtml(metrics.existentes.byRep);
+            document.getElementById('breakdown-churn').innerHTML = generateBreakdownHtml(metrics.churn.byRep);
+        }
+
+        function generateEmailText(metrics) {
+            // Formatar data: 14/09 a 18/09
+            const formatShortDate = (dateString) => {
+                const parts = dateString.split('-');
+                return `${parts[2]}/${parts[1]}`;
+            };
+            const dtStart = formatShortDate(document.getElementById('date-start').value);
+            const dtEnd = formatShortDate(document.getElementById('date-end').value);
+
+            // Função para formatar a linha de resumo do e-mail
+            const formatRepLine = (byRepData) => {
+                let parts = [];
+                // Garante a ordem especificada na configuração ignorando TBDs
+                appData.repsConfig.forEach(config => {
+                    if (config.name !== 'TBD') {
+                        const val = String(byRepData[config.name] || 0).padStart(2, '0');
+                        parts.push(`${config.name}: ${val}`);
+                    }
+                });
+                return "• " + parts.join(" | ");
+            };
+
+            const emailText = `📊 Relatório Semanal ISRs | ${dtStart} a ${dtEnd}
+
+✅ Cotações: ${String(metrics.cotacoes.total).padStart(2, '0')}
+${formatRepLine(metrics.cotacoes.byRep)}
+
+✅ Novos Clientes: ${String(metrics.novos.total).padStart(2, '0')}
+${formatRepLine(metrics.novos.byRep)}
+
+✅ Clientes Existentes: ${String(metrics.existentes.total).padStart(2, '0')}
+${formatRepLine(metrics.existentes.byRep)}
+
+⚠️ Churn: ${String(metrics.churn.total).padStart(2, '0')}
+${formatRepLine(metrics.churn.byRep)}`;
+
+            document.getElementById('email-output').value = emailText;
+        }
+
+        function copyEmail() {
+            const textarea = document.getElementById('email-output');
+            textarea.select();
+            textarea.setSelectionRange(0, 99999); // Mobile
+            
+            try {
+                document.execCommand('copy');
+                // Substituir icon no botão para feedback
+                const btn = event.currentTarget;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="ph ph-check text-green-600"></i> Copiado!';
+                setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
+            } catch (err) {
+                console.error('Falha ao copiar', err);
+            }
+        }
+    </script>
+</body>
+</html>
