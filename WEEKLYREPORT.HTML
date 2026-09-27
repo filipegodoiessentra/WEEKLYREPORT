@@ -451,10 +451,18 @@
                 // Captura a Carteira e a Categoria (com garantias de nome da coluna)
                 let carteira = String(findCol('CARTEIRA') || findCol('Carteira') || 'Sem Carteira').trim();
                 let category = findCol('CUSTOMER CATEGORY') || findCol('Categoria') || findCol('Category');
-                let csal = String(
+                const rawCsal = String(
                     findCol('CSAL') || findCol('CSAL ID') || findCol('Código CSAL') ||
                     findCol('CBperson') || findCol('qteOrig') || ''
                 ).trim();
+                const repByName = appData.repsConfig.find(rep =>
+                    rep.name.toLowerCase() === rawCsal.toLowerCase()
+                );
+                const repById = appData.repsConfig.find(rep =>
+                    String(rep.id).trim() === rawCsal
+                );
+                const mappedRep = repByName || repById;
+                const csal = mappedRep ? String(mappedRep.id).trim() : rawCsal;
                 
                 carteirasSet.add(carteira);
                 if (csal) csalsSet.add(csal);
