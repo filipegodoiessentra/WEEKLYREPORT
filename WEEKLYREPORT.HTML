@@ -385,9 +385,13 @@
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                 
-                // Pega a primeira aba do excel
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
+                // Usa a aba "Base Quote Status_Product_05"; cai para a primeira aba se não existir
+                const targetSheetName = workbook.SheetNames.find(name => name.trim().toLowerCase() === 'base quote status_product_05'.toLowerCase()) || workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[targetSheetName];
+
+                if (targetSheetName !== 'Base Quote Status_Product_05') {
+                    console.warn(`Aba "Base Quote Status_Product_05" não encontrada. Usando a aba "${targetSheetName}".`);
+                }
                 
                 // Converte para JSON
                 const json = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' });
