@@ -270,6 +270,7 @@
             parsedData: [], // Dados formatados e padronizados
             carteiras: [], // Lista de carteiras únicas encontradas
             selectedCarteiras: [], // Carteiras ativas no filtro
+            csals: [], // CSALs encontrados na planilha
             selectedCSALs: [], // CSALs ativos no filtro
             repsConfig: [
                 { id: '338', name: 'Matheus Silva' },
@@ -364,7 +365,6 @@
 
             // Reprocessar os dados com as novas configurações se já houver upload
             if(appData.parsedData.length > 0) {
-                appData.selectedCSALs = appData.repsConfig.map(rep => String(rep.id));
                 renderCSALFilter();
                 processData();
             }
@@ -422,6 +422,7 @@
         // Formata e padroniza as colunas cruas para um modelo mais fácil de trabalhar
         function prepareData() {
             const carteirasSet = new Set();
+            const csalsSet = new Set();
 
             appData.parsedData = appData.rawData.map(row => {
                 // Tenta achar colunas mesmo com pequenas variações de nome/espaços
@@ -450,8 +451,13 @@
                 // Captura a Carteira e a Categoria (com garantias de nome da coluna)
                 let carteira = String(findCol('CARTEIRA') || findCol('Carteira') || 'Sem Carteira').trim();
                 let category = findCol('CUSTOMER CATEGORY') || findCol('Categoria') || findCol('Category');
+                let csal = String(
+                    findCol('CSAL') || findCol('CSAL ID') || findCol('Código CSAL') ||
+                    findCol('CBperson') || findCol('qteOrig') || ''
+                ).trim();
                 
                 carteirasSet.add(carteira);
+                if (csal) csalsSet.add(csal);
 
                 // Garante um ID único sem usar Math.random (que quebrava o agrupamento das linhas)
                 let quoteKey = findCol('Quote Key') || findCol('qteNum') || findCol('Número') || findCol('Quote');
@@ -463,6 +469,7 @@
                 return {
                     quoteKey: quoteKey,
                     repName: findCol('CBperson') || findCol('qteOrig'),
+                    csal: csal,
                     dateObj: dateObj,
                     type: findCol('qteType'),
                     category: category,
@@ -475,26 +482,23 @@
             // Atualiza a lista de carteiras ordenadas alfabeticamente e seleciona todas por padrão
             appData.carteiras = Array.from(carteirasSet).sort();
             appData.selectedCarteiras = [...appData.carteiras];
-            appData.selectedCSALs = appData.repsConfig
-                .map(rep => String(rep.id).trim())
-                .filter(Boolean);
+            appData.csals = Array.from(csalsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            appData.selectedCSALs = [...appData.csals];
         }
 
         function renderCSALFilter() {
             const container = document.getElementById('csals-list');
             container.innerHTML = '';
 
-            appData.repsConfig.forEach(rep => {
-                const csal = String(rep.id).trim();
-                if (!csal) return;
-
+            appData.csals.forEach(csal => {
+                const rep = appData.repsConfig.find(item => String(item.id).trim() === csal);
                 const isSelected = appData.selectedCSALs.includes(csal);
                 const div = document.createElement('div');
                 div.setAttribute('onclick', `toggleCSAL('${csal.replace(/'/g, "\\'")}')`);
                 div.className = `flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-colors border select-none ${isSelected ? 'bg-brand-50 border-brand-300 text-brand-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 opacity-60 hover:opacity-100'}`;
                 div.innerHTML = `
                     <i class="ph-fill ${isSelected ? 'ph-check-circle text-brand-600' : 'ph-circle text-slate-400'} text-lg pointer-events-none"></i>
-                    <span class="pointer-events-none">${csal}${rep.name ? ` - ${rep.name}` : ''}</span>
+                    <span class="pointer-events-none">${csal}${rep && rep.name ? ` - ${rep.name}` : ''}</span>
                 `;
                 container.appendChild(div);
             });
@@ -588,18 +592,20 @@
 
                 // 3. Identifica Vendedor
                 let mappedRepName = "Outros";
+                if (!appData.selectedCSALs.includes(row.csal)) return;
+
                 const rowRepValue = String(row.repName || '').trim();
                 const repMatch = appData.repsConfig.find(r => r.name.toLowerCase() === rowRepValue.toLowerCase());
                 let mappedRep = repMatch;
                 
                 if (repMatch) {
                     mappedRepName = repMatch.name;
-                } else if (appData.repsConfig.find(r => String(r.id).trim() === rowRepValue)) {
-                    mappedRep = appData.repsConfig.find(r => String(r.id).trim() === rowRepValue);
+                } else if (appData.repsConfig.find(r => String(r.id).trim() === row.csal)) {
+                    mappedRep = appData.repsConfig.find(r => String(r.id).trim() === row.csal);
                     mappedRepName = mappedRep.name;
                 }
 
-                if (!mappedRep || !appData.selectedCSALs.includes(String(mappedRep.id).trim())) return;
+                if (!mappedRep) mappedRepName = row.csal || "Outros";
 
                 if(!metrics.cotacoes.byRep[mappedRepName]) {
                     metrics.cotacoes.byRep[mappedRepName] = 0;
